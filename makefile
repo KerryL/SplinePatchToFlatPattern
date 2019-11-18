@@ -9,7 +9,8 @@ TARGET_DEBUG = SplinePatchToFlatPatternd
 
 # Directories in which to search for source files
 DIRS = \
-	src
+	src \
+	src/optimization
 
 # Source files
 SRC = $(foreach dir, $(DIRS), $(wildcard $(dir)/*.cpp))
@@ -18,8 +19,8 @@ VERSION_FILE = src/version.cpp
 # Object files
 TEMP_OBJS_DEBUG = $(addprefix $(OBJDIR_DEBUG),$(SRC:.cpp=.o))
 TEMP_OBJS_RELEASE = $(addprefix $(OBJDIR_RELEASE),$(SRC:.cpp=.o))
-VERSION_FILE_OBJ_DEBUG = $(OBJDIR_DEBUG)$(VERSION_FILE:.cpp=.o)
-VERSION_FILE_OBJ_RELEASE = $(OBJDIR_RELEASE)$(VERSION_FILE:.cpp=.o)
+#VERSION_FILE_OBJ_DEBUG = $(OBJDIR_DEBUG)$(VERSION_FILE:.cpp=.o)
+#VERSION_FILE_OBJ_RELEASE = $(OBJDIR_RELEASE)$(VERSION_FILE:.cpp=.o)
 OBJS_DEBUG = $(filter-out $(VERSION_FILE_OBJ_DEBUG),$(TEMP_OBJS_DEBUG))
 OBJS_RELEASE = $(filter-out $(VERSION_FILE_OBJ_RELEASE),$(TEMP_OBJS_RELEASE))
 ALL_OBJS_DEBUG = $(OBJS_DEBUG) $(VERSION_FILE_OBJ_DEBUG)
@@ -47,14 +48,14 @@ $(OBJDIR_DEBUG)%.o: %.cpp
 	$(CC) $(CFLAGS_DEBUG) -c $< -o $@
 
 version_debug:
-	./getGitHash.sh
-	$(MKDIR) $(dir $(VERSION_FILE_OBJ_DEBUG))
-	$(CC) $(CFLAGS_DEBUG) -c $(VERSION_FILE) -o $(VERSION_FILE_OBJ_DEBUG)
+	#./getGitHash.sh
+	#$(MKDIR) $(dir $(VERSION_FILE_OBJ_DEBUG))
+	#$(CC) $(CFLAGS_DEBUG) -c $(VERSION_FILE) -o $(VERSION_FILE_OBJ_DEBUG)
 
 version_release:
-	./getGitHash.sh
-	$(MKDIR) $(dir $(VERSION_FILE_OBJ_RELEASE))
-	$(CC) $(CFLAGS_RELEASE) -c $(VERSION_FILE) -o $(VERSION_FILE_OBJ_RELEASE)
+	#./getGitHash.sh
+	#$(MKDIR) $(dir $(VERSION_FILE_OBJ_RELEASE))
+	#$(CC) $(CFLAGS_RELEASE) -c $(VERSION_FILE) -o $(VERSION_FILE_OBJ_RELEASE)
 
 clean:
 	$(RM) -r $(OBJDIR)
