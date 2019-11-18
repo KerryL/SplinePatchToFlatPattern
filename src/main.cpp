@@ -8,6 +8,7 @@
 
 // Eigen headers
 #include <Eigen/Eigen>
+#include <Eigen/StdVector>
 
 // Standard C++ headers
 #include <string>
@@ -17,13 +18,16 @@
 #include <iostream>
 #include <cassert>
 
+typedef std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> Vector2DVectors;
+typedef std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> Vector3DVectors;
+
 bool ParseToken(const std::string& token, double& value)
 {
 	std::istringstream ss(token);
 	return !(ss >> value).fail();
 }
 
-bool ParseLine(const std::string& line, std::vector<Eigen::Vector3d>& curve1, std::vector<Eigen::Vector3d>& curve2)
+bool ParseLine(const std::string& line, Vector3DVectors& curve1, Vector3DVectors& curve2)
 {
 	std::istringstream ss(line);
 	Eigen::Vector3d p1, p2;
@@ -72,7 +76,7 @@ bool ParseLine(const std::string& line, std::vector<Eigen::Vector3d>& curve1, st
 	return true;
 }
 
-bool ReadInputFile(const std::string& fileName, std::vector<Eigen::Vector3d>& curve1, std::vector<Eigen::Vector3d>& curve2)
+bool ReadInputFile(const std::string& fileName, Vector3DVectors& curve1, Vector3DVectors& curve2)
 {
 	std::ifstream file(fileName);
 	if (!file.is_open() || !file.good())
@@ -112,14 +116,14 @@ public:
 	Eigen::Vector3d GetControlVector(const unsigned int& i) const { return controlVectors[i]; }
 	
 private:
-	std::vector<Eigen::Vector3d> intersectionPoints;
-	std::vector<Eigen::Vector3d> controlVectors;
+	Vector3DVectors intersectionPoints;
+	Vector3DVectors controlVectors;
 };
 
-std::vector<Eigen::Vector3d> ComputeSpline(const Spline& s, const unsigned int& segmentResolution)
+Vector3DVectors ComputeSpline(const Spline& s, const unsigned int& segmentResolution)
 {
 	const auto segments(s.GetSegmentCount());
-	std::vector<Eigen::Vector3d> points(segments * segmentResolution);
+	Vector3DVectors points(segments * segmentResolution);
 	for (unsigned int i = 0; i < segments; ++i)
 	{
 		double t(0.0);
@@ -144,7 +148,7 @@ std::vector<Eigen::Vector3d> ComputeSpline(const Spline& s, const unsigned int& 
 	return points;
 }
 
-double ComputeError(const Spline& s, const std::vector<Eigen::Vector3d>& goalPoints)
+double ComputeError(const Spline& s, const Vector3DVectors& goalPoints)
 {
 	const unsigned int resolution(1000);
 	const auto sPoints(ComputeSpline(s, resolution));
@@ -164,9 +168,9 @@ double ComputeError(const Spline& s, const std::vector<Eigen::Vector3d>& goalPoi
 	return e;
 }
 
-std::vector<Eigen::Vector3d> BuildControlVectors(const Eigen::VectorXd& x)
+Vector3DVectors BuildControlVectors(const Eigen::VectorXd& x)
 {
-	std::vector<Eigen::Vector3d> controlVectors;
+	Vector3DVectors controlVectors;
 	controlVectors.push_back(Eigen::Vector3d(0.0, fabs(x(0)), 0.0));
 
 	int i;
@@ -180,11 +184,11 @@ std::vector<Eigen::Vector3d> BuildControlVectors(const Eigen::VectorXd& x)
 
 struct SplineFitArgs : public Optimizer::AdditionalArgs
 {
-	SplineFitArgs(const std::vector<Eigen::Vector3d>& goalPoints,
-		const std::vector<Eigen::Vector3d>& intersectionPoints) : goalPoints(goalPoints), intersectionPoints(intersectionPoints) {}
+	SplineFitArgs(const Vector3DVectors& goalPoints,
+		const Vector3DVectors& intersectionPoints) : goalPoints(goalPoints), intersectionPoints(intersectionPoints) {}
 
-	const std::vector<Eigen::Vector3d>& goalPoints;
-	const std::vector<Eigen::Vector3d>& intersectionPoints;
+	const Vector3DVectors& goalPoints;
+	const Vector3DVectors& intersectionPoints;
 };
 
 Eigen::VectorXd DoIteration(const Eigen::VectorXd& guess, const Optimizer::AdditionalArgs* args)
@@ -195,17 +199,17 @@ Eigen::VectorXd DoIteration(const Eigen::VectorXd& guess, const Optimizer::Addit
 	for (unsigned int i = 0; i < controlVectors.size(); ++i)
 		s.AddPoint(arguments.intersectionPoints[i], controlVectors[i]);
 
-	return Eigen::VectorXd(guess.size()).setOnes() * ComputeError(s, arguments.goalPoints);
+	return Eigen::VectorXd(guess.size()).setOnes() * ComputeError(s, arguments.goalPoints);// TODO:  Is this correct?  Can we return 1x1?
 }
 
-void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& spline)
+void FitSplineToPoints(const Vector3DVectors& points, Spline& spline)
 {
 	constexpr unsigned int splineSegmentCount(3);// Assume that we'll get a good fit if we choose three segments.
 	assert(points.size() > splineSegmentCount);
 	Eigen::VectorXd initialGuess((splineSegmentCount - 1) * 3 + 2, 1);
 	initialGuess.setOnes();
 	
-	std::vector<Eigen::Vector3d> intersectionPoints;
+	Vector3DVectors intersectionPoints;
 	spline.AddPoint(points.front(), Eigen::Vector3d(0.0, 1.0, 0.0));
 	intersectionPoints.push_back(points.front());
 
@@ -223,7 +227,7 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 	intersectionPoints.push_back(points.back());
 	
 	SplineFitArgs arguments(points, intersectionPoints);
-	const unsigned int iterationLimit(10000);
+	const unsigned int iterationLimit(1/*0000*/);
 	NelderMead<(splineSegmentCount - 1) * 3 + 2> optimizer(DoIteration, iterationLimit, &arguments);
 	optimizer.SetInitialGuess(initialGuess * 4.0);
 	const auto x(optimizer.Optimize());
@@ -233,7 +237,7 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 		spline.SetControlVector(i, newControlVectors[i]);
 }
 
-double ComputeLength(const std::vector<Eigen::Vector3d>& p)
+double ComputeLength(const Vector3DVectors& p)
 {
 	double length(0.0);
 	for (unsigned int i = 1; i < p.size(); ++i)
@@ -245,7 +249,7 @@ bool FindIntersectionOfTwoCircles(const Eigen::Vector2d& c1, const double& r1,
 	const Eigen::Vector2d& c2, const double& r2, Eigen::Vector2d& isect1, Eigen::Vector2d& isect2)
 {
 	const double distance((c1 - c2).norm());
-	if (distance > r1 + r2 || distance < fabs(r1 -r2) || (distance == 0.0 && r1 == r2))// If there are no solutions, or infinite solutions, we cannot proceed
+	if (distance > r1 + r2 /*|| distance < fabs(r1 - r2)*/ || (distance == 0.0 && r1 == r2))// If there are no solutions, or infinite solutions, we cannot proceed
 		return false;
 
 	const double a((r1 * r1 - r2 * r2 + distance * distance) / (2.0 * distance));
@@ -253,52 +257,61 @@ bool FindIntersectionOfTwoCircles(const Eigen::Vector2d& c1, const double& r1,
 	const Eigen::Vector2d p(c1 + a * (c2 - c1) / distance);
 
 	isect1(0) = p(0) + h * (c2(1) - c1(1)) / distance;
-	isect1(1) = p(0) - h * (c2(0) - c1(0)) / distance;
+	isect1(1) = p(1) - h * (c2(0) - c1(0)) / distance;
 
 	isect2(0) = p(0) - h * (c2(1) - c1(1)) / distance;
-	isect2(1) = p(0) + h * (c2(0) - c1(0)) / distance;
+	isect2(1) = p(1) + h * (c2(0) - c1(0)) / distance;
 
 	return true;
 }
 
-Eigen::Vector2d ChooseBestIntersection(const Eigen::Vector2d& isect1, const Eigen::Vector2d& isect2, const std::vector<Eigen::Vector2d>& c)
+Eigen::Vector2d ChooseBestIntersection(const Eigen::Vector2d& isect1, const Eigen::Vector2d& isect2, const Vector2DVectors& c)
 {
-	if (c.size() < 2)
+	// TODO:  Improve this.  Should also consider distance between intersection results as criteria?  And/or distance from previous point?
+	/*if (c.size() < 2)
 		return isect1;
 
 	if ((c.back() - isect1).norm() > (c.back() - isect2).norm())
-		return isect1;
+		return isect1;*/
 	return isect2;
 }
 
-bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepTarget, std::vector<Eigen::Vector2d>& flatPatternPoints)
+bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepTarget, Vector2DVectors& flatPatternPoints)
 {
 	const unsigned int resolution(1000);
-	const auto c1(ComputeSpline(s1, resolution));
-	const auto c2(ComputeSpline(s2, resolution));
+	auto c1(ComputeSpline(s1, resolution));
+	auto c2(ComputeSpline(s2, resolution));
 
-	const double s1Length(ComputeLength(c1));
-	const double s2Length(ComputeLength(c2));
+	double s1Length(ComputeLength(c1));
+	double s2Length(ComputeLength(c2));
+
+	// Recalculate with resolution fine enough to give good distance resolution
+	const double factor(100.0);
+	c1 = ComputeSpline(s1, static_cast<unsigned int>(s1Length / stepTarget * factor));
+	c2 = ComputeSpline(s2, static_cast<unsigned int>(s2Length / stepTarget * factor));
+
+	s1Length = ComputeLength(c1);
+	s2Length = ComputeLength(c2);
 
 	const double step1(s1Length > s2Length ? stepTarget : stepTarget * s1Length / s2Length);
 	const double step2(s2Length > s1Length ? stepTarget : stepTarget * s2Length / s1Length);
 
-	std::vector<Eigen::Vector2d> curve1, curve2;
+	Vector2DVectors curve1, curve2;
 	double d((c1.front() - c2.front()).norm());
-	curve1.push_back(Eigen::Vector2d(0.0, 0.0));
-	curve2.push_back(Eigen::Vector2d(d, 0.0));
+	curve1.push_back((Eigen::Vector2d() << 0.0, 0.0).finished());
+	curve2.push_back((Eigen::Vector2d() << d, 0.0).finished());
 
 	unsigned int i1(1), i2(1);
 	unsigned int i1Last(0), i2Last(0);
-	while (i1Last < c1.size() && i2Last < c2.size())
+	while (i1 < c1.size() - 1 && i2 < c2.size() - 1)
 	{
-		for (; i1 < curve1.size() - 1; ++i1)
+		for (; i1 < c1.size() - 1; ++i1)
 		{
 			if ((c1[i1] - c1[i1Last]).norm() > step1)
 				break;
 		}
 
-		for (; i2 < curve2.size() - 1; ++i2)
+		for (; i2 < c2.size() - 1; ++i2)
 		{
 			if ((c2[i2] - c2[i2Last]).norm() > step2)
 				break;
@@ -340,10 +353,10 @@ int main(int argc, char* argv[])
 			<< "  for half of each curve (i.e. positive y-ordinates only).  It is\n"
 			<< "  assumed that x-z plane symmetry is desired, and curves are\n"
 			<< "  constrained to have slopes parallel to the y-axis where the curves\n"
-			<< "  meet the x-z plane\n" << std::endl;
+			<< "  meet the x-z plane.\n" << std::endl;
 	}
 
-	std::vector<Eigen::Vector3d> curve1, curve2;
+	Vector3DVectors curve1, curve2;
 	if (!ReadInputFile(argv[1], curve1, curve2))
 		return 1;
 
@@ -358,8 +371,8 @@ int main(int argc, char* argv[])
 	for (unsigned int i = 0; i < c1.size(); ++i)
 		o << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
 
-	const double distanceResolution(0.01);
-	std::vector<Eigen::Vector2d> flatPatternPoints;
+	const double distanceResolution(0.25/*0.01*/);
+	Vector2DVectors flatPatternPoints;
 	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints))
 		return 1;
 
