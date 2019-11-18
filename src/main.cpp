@@ -210,24 +210,28 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 	std::vector<Eigen::Vector3d> intersectionPoints;
 	spline.AddPoint(points.front(), Eigen::Vector3d(0.0, 1.0, 0.0));
 	intersectionPoints.push_back(points.front());
+	//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
 	
-	unsigned int i1(points.size() / splineSegmentCount);
+	const unsigned int i1(points.size() / splineSegmentCount);
 	for (unsigned int a = 1; a < splineSegmentCount; ++a)
 	{
-		spline.AddPoint(points[i1 * a], points[i1 * a + 1] - points[i1 * a - 1]);
+		spline.AddPoint(points[i1 * a], points[i1 * a - 1] - points[i1 * a + 1]);
 		intersectionPoints.push_back(points[i1 * a]);
-		initialGuess(a) = intersectionPoints.back()(0);
-		initialGuess(a + 1) = intersectionPoints.back()(1);
-		initialGuess(a + 2) = intersectionPoints.back()(2);
+		//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
+		initialGuess((a - 1) * 3 + 1) = spline.GetControlVector(a)(0);
+		initialGuess((a - 1) * 3 + 2) = spline.GetControlVector(a)(1);
+		initialGuess((a - 1) * 3 + 3) = spline.GetControlVector(a)(2);
 	}
 
 	spline.AddPoint(points.back(), Eigen::Vector3d(0.0, 1.0, 0.0));
 	intersectionPoints.push_back(points.back());
+	//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
+	//std::cout << initialGuess * 4.0 << "\n\n" << std::endl;
 	
 	SplineFitArgs arguments(points, intersectionPoints);
-	const unsigned int iterationLimit(100);
-	NelderMead<Eigen::Dynamic> optimizer(DoIteration, iterationLimit, &arguments);
-	optimizer.SetInitialGuess(initialGuess);
+	const unsigned int iterationLimit(1000);
+	NelderMead<(splineSegmentCount - 1) * 3 + 2> optimizer(DoIteration, iterationLimit, &arguments);
+	optimizer.SetInitialGuess(initialGuess * 4.0);
 	const auto x(optimizer.Optimize());
 	const auto newControlVectors(BuildControlVectors(x));
 
@@ -237,6 +241,7 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 
 bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const unsigned int& divisions, std::vector<Eigen::Vector3d>& flatPatternPoints)
 {
+	// TODO
 	return false;
 }
 

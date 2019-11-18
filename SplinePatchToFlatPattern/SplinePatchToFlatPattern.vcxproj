@@ -123,6 +123,7 @@
     <ClInclude Include="..\src\optimization\nelderMead.h" />
     <ClInclude Include="..\src\optimization\newtonRaphson.h" />
     <ClInclude Include="..\src\optimization\optimizer.h" />
+    <ClInclude Include="..\src\optimization\zip.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

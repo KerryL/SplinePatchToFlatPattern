@@ -38,5 +38,8 @@
     <ClInclude Include="..\src\optimization\optimizer.h">
       <Filter>Header Files\optimization</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\optimization\zip.h">
+      <Filter>Header Files\optimization</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
