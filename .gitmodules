@@ -1,0 +1,3 @@
+[submodule "src/optimization"]
+	path = src/optimization
+	url = https://github.com/KerryL/optimization.git
