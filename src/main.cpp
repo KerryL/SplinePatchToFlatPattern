@@ -4,7 +4,7 @@
 // Desc:  Entry point for SplinePatchToFlatPattern application.
 
 // optimization headers
-#include "optimization/newtonRaphson.h"
+#include "optimization/nelderMead.h"
 
 // Eigen headers
 #include <Eigen/Eigen>
@@ -139,6 +139,7 @@ std::vector<Eigen::Vector3d> ComputeSpline(const Spline& s, const unsigned int& 
 			const Eigen::Vector3d p3(s.GetIntersectionPoint(i + 1));
 
 			points[i * segmentResolution + j] = pow(1.0 - t, 3) * p0 + 3.0 * pow(1.0 - t, 2) * t * p1 + 3.0 * (1. - t) * t * t * p2 + pow(t, 3) * p3;
+			t += tStep;
 		}
 	}
 
@@ -196,7 +197,7 @@ Eigen::VectorXd DoIteration(const Eigen::VectorXd& guess, const Optimizer::Addit
 	for (unsigned int i = 0; i < controlVectors.size(); ++i)
 		s.AddPoint(arguments.intersectionPoints[i], controlVectors[i]);
 
-	return (Eigen::Matrix<double, 1, 1>() << ComputeError(s, arguments.goalPoints)).finished();
+	return Eigen::VectorXd(guess.size()).setOnes() * ComputeError(s, arguments.goalPoints);
 }
 
 void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& spline)
@@ -225,7 +226,7 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 	
 	SplineFitArgs arguments(points, intersectionPoints);
 	const unsigned int iterationLimit(100);
-	NewtonRaphson<Eigen::Dynamic> optimizer(DoIteration, iterationLimit, &arguments);
+	NelderMead<Eigen::Dynamic> optimizer(DoIteration, iterationLimit, &arguments);
 	optimizer.SetInitialGuess(initialGuess);
 	const auto x(optimizer.Optimize());
 	const auto newControlVectors(BuildControlVectors(x));
