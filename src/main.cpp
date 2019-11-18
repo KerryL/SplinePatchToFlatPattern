@@ -107,8 +107,6 @@ public:
 
 	void SetControlVector(const unsigned int& i, const Eigen::Vector3d& v) { controlVectors[i] = v; }
 
-	//double GetLength() const;
-
 	unsigned int GetSegmentCount() const { return intersectionPoints.size() - 1; }
 	Eigen::Vector3d GetIntersectionPoint(const unsigned int& i) const { return intersectionPoints[i]; }
 	Eigen::Vector3d GetControlVector(const unsigned int& i) const { return controlVectors[i]; }
@@ -210,14 +208,12 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 	std::vector<Eigen::Vector3d> intersectionPoints;
 	spline.AddPoint(points.front(), Eigen::Vector3d(0.0, 1.0, 0.0));
 	intersectionPoints.push_back(points.front());
-	//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
-	
+
 	const unsigned int i1(points.size() / splineSegmentCount);
 	for (unsigned int a = 1; a < splineSegmentCount; ++a)
 	{
 		spline.AddPoint(points[i1 * a], points[i1 * a - 1] - points[i1 * a + 1]);
 		intersectionPoints.push_back(points[i1 * a]);
-		//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
 		initialGuess((a - 1) * 3 + 1) = spline.GetControlVector(a)(0);
 		initialGuess((a - 1) * 3 + 2) = spline.GetControlVector(a)(1);
 		initialGuess((a - 1) * 3 + 3) = spline.GetControlVector(a)(2);
@@ -225,11 +221,9 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 
 	spline.AddPoint(points.back(), Eigen::Vector3d(0.0, 1.0, 0.0));
 	intersectionPoints.push_back(points.back());
-	//std::cout << intersectionPoints.back().transpose() << "\n\n" << std::endl;
-	//std::cout << initialGuess * 4.0 << "\n\n" << std::endl;
 	
 	SplineFitArgs arguments(points, intersectionPoints);
-	const unsigned int iterationLimit(1000);
+	const unsigned int iterationLimit(10000);
 	NelderMead<(splineSegmentCount - 1) * 3 + 2> optimizer(DoIteration, iterationLimit, &arguments);
 	optimizer.SetInitialGuess(initialGuess * 4.0);
 	const auto x(optimizer.Optimize());
@@ -239,10 +233,99 @@ void FitSplineToPoints(const std::vector<Eigen::Vector3d>& points, Spline& splin
 		spline.SetControlVector(i, newControlVectors[i]);
 }
 
-bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const unsigned int& divisions, std::vector<Eigen::Vector3d>& flatPatternPoints)
+double ComputeLength(const std::vector<Eigen::Vector3d>& p)
 {
-	// TODO
-	return false;
+	double length(0.0);
+	for (unsigned int i = 1; i < p.size(); ++i)
+		length += (p[i] - p[i - 1]).norm();
+	return length;
+}
+
+bool FindIntersectionOfTwoCircles(const Eigen::Vector2d& c1, const double& r1,
+	const Eigen::Vector2d& c2, const double& r2, Eigen::Vector2d& isect1, Eigen::Vector2d& isect2)
+{
+	const double distance((c1 - c2).norm());
+	if (distance > r1 + r2 || distance < fabs(r1 -r2) || (distance == 0.0 && r1 == r2))// If there are no solutions, or infinite solutions, we cannot proceed
+		return false;
+
+	const double a((r1 * r1 - r2 * r2 + distance * distance) / (2.0 * distance));
+	const double h(sqrt(r1 * r1 - a * a));
+	const Eigen::Vector2d p(c1 + a * (c2 - c1) / distance);
+
+	isect1(0) = p(0) + h * (c2(1) - c1(1)) / distance;
+	isect1(1) = p(0) - h * (c2(0) - c1(0)) / distance;
+
+	isect2(0) = p(0) - h * (c2(1) - c1(1)) / distance;
+	isect2(1) = p(0) + h * (c2(0) - c1(0)) / distance;
+
+	return true;
+}
+
+Eigen::Vector2d ChooseBestIntersection(const Eigen::Vector2d& isect1, const Eigen::Vector2d& isect2, const std::vector<Eigen::Vector2d>& c)
+{
+	if (c.size() < 2)
+		return isect1;
+
+	if ((c.back() - isect1).norm() > (c.back() - isect2).norm())
+		return isect1;
+	return isect2;
+}
+
+bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepTarget, std::vector<Eigen::Vector2d>& flatPatternPoints)
+{
+	const unsigned int resolution(1000);
+	const auto c1(ComputeSpline(s1, resolution));
+	const auto c2(ComputeSpline(s2, resolution));
+
+	const double s1Length(ComputeLength(c1));
+	const double s2Length(ComputeLength(c2));
+
+	const double step1(s1Length > s2Length ? stepTarget : stepTarget * s1Length / s2Length);
+	const double step2(s2Length > s1Length ? stepTarget : stepTarget * s2Length / s1Length);
+
+	std::vector<Eigen::Vector2d> curve1, curve2;
+	double d((c1.front() - c2.front()).norm());
+	curve1.push_back(Eigen::Vector2d(0.0, 0.0));
+	curve2.push_back(Eigen::Vector2d(d, 0.0));
+
+	unsigned int i1(1), i2(1);
+	unsigned int i1Last(0), i2Last(0);
+	while (i1Last < c1.size() && i2Last < c2.size())
+	{
+		for (; i1 < curve1.size() - 1; ++i1)
+		{
+			if ((c1[i1] - c1[i1Last]).norm() > step1)
+				break;
+		}
+
+		for (; i2 < curve2.size() - 1; ++i2)
+		{
+			if ((c2[i2] - c2[i2Last]).norm() > step2)
+				break;
+		}
+
+		const double d1From1((c1[i1] - c1[i1Last]).norm());
+		const double d1From2((c1[i1] - c2[i2Last]).norm());
+		const double d2From1((c2[i2] - c1[i1Last]).norm());
+		const double d2From2((c2[i2] - c2[i2Last]).norm());
+		i1Last = i1;
+		i2Last = i2;
+
+		Eigen::Vector2d isect11, isect12, isect21, isect22;
+		if (!FindIntersectionOfTwoCircles(curve1.back(), d1From1, curve2.back(), d1From2, isect11, isect12))
+			return false;
+		if (!FindIntersectionOfTwoCircles(curve1.back(), d2From1, curve2.back(), d2From2, isect21, isect22))
+			return false;
+
+		curve1.push_back(ChooseBestIntersection(isect11, isect12, curve1));
+		curve2.push_back(ChooseBestIntersection(isect21, isect22, curve2));
+	}
+
+	flatPatternPoints = curve1;
+	std::reverse(curve2.begin(), curve2.end());
+	flatPatternPoints.insert(flatPatternPoints.end(), curve2.begin(), curve2.end());
+
+	return true;
 }
 
 int main(int argc, char* argv[])
@@ -268,17 +351,22 @@ int main(int argc, char* argv[])
 	FitSplineToPoints(curve1, spline1);
 	FitSplineToPoints(curve2, spline2);
 
-	const unsigned int res(30);
+	/*const unsigned int res(30);
 	const auto c1(ComputeSpline(spline1, res));
 	const auto c2(ComputeSpline(spline2, res));
 	std::ofstream o("out.csv");
 	for (unsigned int i = 0; i < c1.size(); ++i)
-		o << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';
+		o << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
 
-	const unsigned int divisions(100);
-	std::vector<Eigen::Vector3d> flatPatternPoints;
-	if (!GenerateFlatPattern(spline1, spline2, divisions, flatPatternPoints))
+	const double distanceResolution(0.01);
+	std::vector<Eigen::Vector2d> flatPatternPoints;
+	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints))
 		return 1;
+
+	std::ofstream o("flatPattern.csv");
+	o.precision(10);
+	for (const auto& p : flatPatternPoints)
+		o << std::fixed << p(0) << ',' << p(1) << '\n';
 	
 	return 0;
 }
