@@ -227,7 +227,7 @@ void FitSplineToPoints(const Vector3DVectors& points, Spline& spline)
 	intersectionPoints.push_back(points.back());
 	
 	SplineFitArgs arguments(points, intersectionPoints);
-	const unsigned int iterationLimit(1/*0000*/);
+	const unsigned int iterationLimit(10000);
 	NelderMead<(splineSegmentCount - 1) * 3 + 2> optimizer(DoIteration, iterationLimit, &arguments);
 	optimizer.SetInitialGuess(initialGuess * 4.0);
 	const auto x(optimizer.Optimize());
@@ -371,7 +371,7 @@ int main(int argc, char* argv[])
 	for (unsigned int i = 0; i < c1.size(); ++i)
 		o << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
 
-	const double distanceResolution(0.25/*0.01*/);
+	const double distanceResolution(0.01);
 	Vector2DVectors flatPatternPoints;
 	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints))
 		return 1;
