@@ -17,6 +17,7 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
+#include <algorithm>
 
 typedef std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> Vector2DVectors;
 typedef std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> Vector3DVectors;
@@ -96,7 +97,15 @@ bool ReadInputFile(const std::string& fileName, Vector3DVectors& curve1, Vector3
 			return false;
 		}
 	}
-	
+
+	auto sortPredicate([](const Eigen::Vector3d&a, const Eigen::Vector3d& b)
+	{
+		return a(0) < b(0);
+	});
+
+	std::sort(curve1.begin(), curve1.end(), sortPredicate);
+	std::sort(curve2.begin(), curve2.end(), sortPredicate);
+
 	return true;
 }
 
@@ -364,22 +373,25 @@ int main(int argc, char* argv[])
 	FitSplineToPoints(curve1, spline1);
 	FitSplineToPoints(curve2, spline2);
 
-	/*const unsigned int res(30);
+	const unsigned int res(30);
 	const auto c1(ComputeSpline(spline1, res));
 	const auto c2(ComputeSpline(spline2, res));
-	std::ofstream o("out.csv");
+	std::ofstream splinesOut("splinesOut.csv");
 	for (unsigned int i = 0; i < c1.size(); ++i)
-		o << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
+		splinesOut << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
 
 	const double distanceResolution(0.01);
 	Vector2DVectors flatPatternPoints;
 	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints))
 		return 1;
 
-	std::ofstream o("flatPattern.csv");
-	o.precision(10);
-	for (const auto& p : flatPatternPoints)
-		o << std::fixed << p(0) << ',' << p(1) << '\n';
+	const unsigned int targetOutputPointCount(60);
+	const unsigned int increment(std::max(flatPatternPoints.size() / targetOutputPointCount, 1U));
+	std::ofstream flatPatternOut("flatPattern.csv");
+	flatPatternOut.precision(10);
+	for (unsigned int i = 0; i < flatPatternPoints.size(); i += increment)
+		flatPatternOut << std::fixed << flatPatternPoints[i](0) << ',' << flatPatternPoints[i](1) << '\n';
+	flatPatternOut << std::fixed << flatPatternPoints.back()(0) << ',' << flatPatternPoints.back()(1) << '\n';// We risk printing the final point twice... so be it
 	
 	return 0;
 }

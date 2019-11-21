@@ -1,5 +1,5 @@
-points = csvread('SplinePatchToFlatPattern/points.csv');
-splines = csvread('SplinePatchToFlatPattern/out.csv');
+points = csvread('rimPoints.csv');
+splines = csvread('Release/splinesOut.csv');
 
 hold off
 plot3(points(:,1), points(:,2), points(:,3), 'r+')
