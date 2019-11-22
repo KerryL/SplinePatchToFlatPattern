@@ -123,6 +123,9 @@ public:
 	unsigned int GetSegmentCount() const { return intersectionPoints.size() - 1; }
 	Eigen::Vector3d GetIntersectionPoint(const unsigned int& i) const { return intersectionPoints[i]; }
 	Eigen::Vector3d GetControlVector(const unsigned int& i) const { return controlVectors[i]; }
+
+	const Vector3DVectors& GetIntersectionPoints() const { return intersectionPoints; }
+	const Vector3DVectors& GetControlVectors() const { return controlVectors; }
 	
 private:
 	Vector3DVectors intersectionPoints;
@@ -140,12 +143,7 @@ Vector3DVectors ComputeSpline(const Spline& s, const unsigned int& segmentResolu
 		for (unsigned int j = 0; j < segmentResolution; ++j)
 		{
 			const Eigen::Vector3d p0(s.GetIntersectionPoint(i));
-			const Eigen::Vector3d p1([&i, &s]() -> Eigen::Vector3d
-			{
-				if (i == 0)
-					return s.GetIntersectionPoint(i) + s.GetControlVector(i);
-				return s.GetIntersectionPoint(i) - s.GetControlVector(i);
-			}());
+			const Eigen::Vector3d p1(s.GetIntersectionPoint(i) - s.GetControlVector(i));
 			const Eigen::Vector3d p2(s.GetIntersectionPoint(i + 1) + s.GetControlVector(i + 1));
 			const Eigen::Vector3d p3(s.GetIntersectionPoint(i + 1));
 
@@ -177,16 +175,24 @@ double ComputeError(const Spline& s, const Vector3DVectors& goalPoints)
 	return e;
 }
 
-Vector3DVectors BuildControlVectors(const Eigen::VectorXd& x)
+Vector3DVectors BuildControlVectors(Eigen::VectorXd x, const Eigen::VectorXd* initialGuess = nullptr)
 {
 	Vector3DVectors controlVectors;
-	controlVectors.push_back(Eigen::Vector3d(0.0, fabs(x(0)), 0.0));
+	controlVectors.push_back(Eigen::Vector3d(0.0, -fabs(x(0)), 0.0));
 
-	int i;
-	for (i = 1; i < x.size() - 1; i += 3)
+	if (initialGuess)
+	{
+		for (int i = 1; i < x.size() - 1; ++i)
+		{
+			if (x(i) * (*initialGuess)(i) < 0.0)
+				x(i) *= -1.0;
+		}
+	}
+
+	for (int i = 1; i < x.size() - 1; i += 3)
 		controlVectors.push_back(Eigen::Vector3d(x(i), x(i + 1), x(i + 2)));
 
-	controlVectors.push_back(Eigen::Vector3d(0.0, fabs(x(i)), 0.0));
+	controlVectors.push_back(Eigen::Vector3d(0.0, fabs(x(x.size() - 1)), 0.0));
 
 	return controlVectors;
 }
@@ -194,16 +200,18 @@ Vector3DVectors BuildControlVectors(const Eigen::VectorXd& x)
 struct SplineFitArgs : public Optimizer::AdditionalArgs
 {
 	SplineFitArgs(const Vector3DVectors& goalPoints,
-		const Vector3DVectors& intersectionPoints) : goalPoints(goalPoints), intersectionPoints(intersectionPoints) {}
+		const Vector3DVectors& intersectionPoints, const Eigen::VectorXd& initialGuess)
+		: goalPoints(goalPoints), intersectionPoints(intersectionPoints), initialGuess(initialGuess) {}
 
 	const Vector3DVectors& goalPoints;
 	const Vector3DVectors& intersectionPoints;
+	const Eigen::VectorXd initialGuess;
 };
 
 Eigen::VectorXd DoIteration(const Eigen::VectorXd& guess, const Optimizer::AdditionalArgs* args)
 {
 	const auto& arguments(*dynamic_cast<const SplineFitArgs*>(args));
-	const auto controlVectors(BuildControlVectors(guess));
+	const auto controlVectors(BuildControlVectors(guess, &arguments.initialGuess));
 	Spline s;
 	for (unsigned int i = 0; i < controlVectors.size(); ++i)
 		s.AddPoint(arguments.intersectionPoints[i], controlVectors[i]);
@@ -218,32 +226,41 @@ void FitSplineToPoints(const Vector3DVectors& points, Spline& spline)
 	Eigen::VectorXd initialGuess((splineSegmentCount - 1) * 3 + 2, 1);
 	initialGuess.setOnes();
 	
-	Vector3DVectors intersectionPoints;
-	spline.AddPoint(points.front(), Eigen::Vector3d(0.0, 1.0, 0.0));
-	intersectionPoints.push_back(points.front());
+	spline.AddPoint(points.front(), Eigen::Vector3d(0.0, -1.0, 0.0));
 
 	const unsigned int i1(points.size() / splineSegmentCount);
 	for (unsigned int a = 1; a < splineSegmentCount; ++a)
 	{
-		spline.AddPoint(points[i1 * a], points[i1 * a - 1] - points[i1 * a + 1]);
-		intersectionPoints.push_back(points[i1 * a]);
+		const double signAdjust(1.0);
+		spline.AddPoint(points[i1 * a], (points[i1 * a - 1] - points[i1 * a + 1]) * signAdjust);
 		initialGuess((a - 1) * 3 + 1) = spline.GetControlVector(a)(0);
 		initialGuess((a - 1) * 3 + 2) = spline.GetControlVector(a)(1);
 		initialGuess((a - 1) * 3 + 3) = spline.GetControlVector(a)(2);
 	}
 
 	spline.AddPoint(points.back(), Eigen::Vector3d(0.0, 1.0, 0.0));
-	intersectionPoints.push_back(points.back());
+
+	/*std::cout << "\nIntersection Points:\n";
+	for (const auto& ip : spline.GetIntersectionPoints())
+		std::cout << ip.transpose() << '\n';
+
+	std::cout << "\nInitial Control Vectors:\n";
+	for (const auto& cp : spline.GetControlVectors())
+		std::cout << cp.transpose() << '\n';*/
 	
-	SplineFitArgs arguments(points, intersectionPoints);
+	SplineFitArgs arguments(points, spline.GetIntersectionPoints(), initialGuess);
 	const unsigned int iterationLimit(10000);
 	NelderMead<(splineSegmentCount - 1) * 3 + 2> optimizer(DoIteration, iterationLimit, &arguments);
-	optimizer.SetInitialGuess(initialGuess * 4.0);
+	optimizer.SetInitialGuess(initialGuess);
 	const auto x(optimizer.Optimize());
 	const auto newControlVectors(BuildControlVectors(x));
 
 	for (unsigned int i = 0; i < newControlVectors.size(); ++i)
 		spline.SetControlVector(i, newControlVectors[i]);
+
+	/*std::cout << "\nFinal Control Vectors:\n";
+	for (const auto& cp : spline.GetControlVectors())
+		std::cout << cp.transpose() << '\n';*/
 }
 
 double ComputeLength(const Vector3DVectors& p)
