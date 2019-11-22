@@ -302,7 +302,7 @@ Eigen::Vector2d ChooseBestIntersection(const Eigen::Vector2d& isect1, const Eige
 	return isect2;
 }
 
-bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepTarget, Vector2DVectors& flatPatternPoints)
+bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepTarget, Vector2DVectors& flatPatternPoints, const unsigned int& targetOutputPointCount)
 {
 	const unsigned int resolution(1000);
 	auto c1(ComputeSpline(s1, resolution));
@@ -360,9 +360,26 @@ bool GenerateFlatPattern(const Spline& s1, const Spline& s2, const double& stepT
 		curve2.push_back(ChooseBestIntersection(isect21, isect22, curve2));
 	}
 
+	auto decimate([](Vector2DVectors& curve, const unsigned int& increment)
+	{
+		unsigned int swapCount(0);
+		for (unsigned int i = 0; i < curve.size(); ++i)
+		{
+			if (i % increment == 0 || i == curve.size() - 1)
+				continue;
+			auto it(curve.begin() + i - swapCount);
+			std::rotate(it, it + 1, curve.end());
+			++swapCount;
+		}
+		curve.erase(curve.begin() + curve.size() - swapCount, curve.end());
+	});
+
+	const unsigned int increment(std::max(static_cast<unsigned int>(curve1.size() / targetOutputPointCount), 1U));
+	decimate(curve1, increment);
+	decimate(curve2, increment);
+
 	flatPatternPoints = curve1;
-	std::reverse(curve2.begin(), curve2.end());
-	flatPatternPoints.insert(flatPatternPoints.end(), curve2.begin(), curve2.end());
+	flatPatternPoints.insert(flatPatternPoints.end(), curve2.rbegin(), curve2.rend());
 
 	return true;
 }
@@ -398,17 +415,15 @@ int main(int argc, char* argv[])
 		splinesOut << c1[i](0) << ',' << c1[i](1) << ',' << c1[i](2) << ',' << c2[i](0) << ',' << c2[i](1) << ',' << c2[i](2) << '\n';//*/
 
 	const double distanceResolution(0.01);
+	const unsigned int targetOutputPointCount(100);
 	Vector2DVectors flatPatternPoints;
-	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints))
+	if (!GenerateFlatPattern(spline1, spline2, distanceResolution, flatPatternPoints, targetOutputPointCount))
 		return 1;
 
-	const unsigned int targetOutputPointCount(60);
-	const unsigned int increment(std::max(static_cast<unsigned int>(flatPatternPoints.size() / targetOutputPointCount), 1U));
 	std::ofstream flatPatternOut("flatPattern.csv");
 	flatPatternOut.precision(10);
-	for (unsigned int i = 0; i < flatPatternPoints.size(); i += increment)
+	for (unsigned int i = 0; i < flatPatternPoints.size(); ++i)
 		flatPatternOut << std::fixed << flatPatternPoints[i](0) << ',' << flatPatternPoints[i](1) << '\n';
-	flatPatternOut << std::fixed << flatPatternPoints.back()(0) << ',' << flatPatternPoints.back()(1) << '\n';// We risk printing the final point twice... so be it
 	
 	return 0;
 }
