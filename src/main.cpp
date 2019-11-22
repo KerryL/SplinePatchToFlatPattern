@@ -386,7 +386,7 @@ int main(int argc, char* argv[])
 		return 1;
 
 	const unsigned int targetOutputPointCount(60);
-	const unsigned int increment(std::max(flatPatternPoints.size() / targetOutputPointCount, 1U));
+	const unsigned int increment(std::max(static_cast<unsigned int>(flatPatternPoints.size() / targetOutputPointCount), 1U));
 	std::ofstream flatPatternOut("flatPattern.csv");
 	flatPatternOut.precision(10);
 	for (unsigned int i = 0; i < flatPatternPoints.size(); i += increment)
